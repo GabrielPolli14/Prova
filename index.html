@@ -338,6 +338,29 @@ body::before{
 .done-hero p{color:var(--muted);font-size:.92rem;max-width:420px;margin:0 auto 26px;}
 .done-actions{display:flex;flex-direction:column;gap:12px;max-width:360px;margin:0 auto;}
 
+/* Placar de acertos e erros */
+.score-row{
+  display:flex;gap:12px;justify-content:center;flex-wrap:wrap;
+  margin:0 auto 26px;max-width:480px;
+}
+.score-card{
+  flex:1;min-width:120px;
+  border-radius:var(--radius-sm);padding:16px 12px;text-align:center;
+  border:2px solid transparent;
+}
+.score-card .sc-num{font-size:1.9rem;font-weight:800;line-height:1.1;}
+.score-card .sc-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
+.score-ok{background:#e4f6ec;border-color:#9fdcbb;}
+.score-ok .sc-num{color:#1f7a4d;}
+.score-ok .sc-label{color:#2e9067;}
+.score-bad{background:#fbe9e9;border-color:#eeb3b3;}
+.score-bad .sc-num{color:#b03a3a;}
+.score-bad .sc-label{color:#c05050;}
+.score-disc{background:var(--lilac-mist);border-color:var(--lilac-soft);}
+.score-disc .sc-num{color:var(--lilac-deep);}
+.score-disc .sc-label{color:var(--lilac);}
+.score-pct{font-size:.86rem;color:var(--muted);margin:-12px auto 24px;max-width:420px;}
+
 /* ═══════════════════════════════════════════
    TELA DE GESTÃO
 ═══════════════════════════════════════════ */
@@ -519,7 +542,9 @@ body::before{
         <div class="done-hero">
           <div class="done-icon">🎉</div>
           <h2>Prova concluída!</h2>
-          <p>Seu PDF foi gerado e baixado com sucesso. Verifique a pasta de downloads do seu dispositivo.</p>
+          <p>Seu PDF foi gerado e baixado com sucesso. Confira abaixo o seu desempenho nas questões objetivas.</p>
+          <div class="score-row" id="score-row"></div>
+          <p class="score-pct" id="score-pct"></p>
           <div class="done-actions">
             <button class="btn btn-gold" onclick="baixarNovamente()">⬇ Baixar PDF novamente</button>
             <button class="btn btn-primary" onclick="voltarAoInicio()">↩ Voltar ao Início</button>
@@ -1390,6 +1415,28 @@ function coletarRespostas(){
 }
 
 /* ──────────────────────────────────────────────────
+   CALCULAR RESULTADO (acertos / erros nas objetivas)
+────────────────────────────────────────────────── */
+function calcularResultado(respostas){
+  const letras=['A','B','C','D'];
+  let acertos=0,erros=0,discursivas=0;
+  const status=[]; // por questão: 'ok' | 'erro' | 'disc'
+  provaAtual.forEach((q,idx)=>{
+    if(q.tipo_q==='discursiva'){
+      discursivas++;
+      status.push('disc');
+    } else {
+      const letraCorreta=letras[q.indiceCorretaExibida];
+      if(respostas[idx]===letraCorreta){acertos++;status.push('ok');}
+      else{erros++;status.push('erro');}
+    }
+  });
+  const totalObj=acertos+erros;
+  const pct=totalObj?Math.round(acertos/totalObj*100):0;
+  return{acertos,erros,discursivas,totalObj,pct,status};
+}
+
+/* ──────────────────────────────────────────────────
    CONCLUIR
 ────────────────────────────────────────────────── */
 function concluirProva(){
@@ -1417,6 +1464,23 @@ function concluirProva(){
     btn.innerHTML='✅ Concluir e Gerar PDF';
     btn.disabled=false;
     if(sucesso){
+      // Preenche o placar de acertos e erros
+      const r=calcularResultado(respostas);
+      document.getElementById('score-row').innerHTML=`
+        <div class="score-card score-ok">
+          <div class="sc-num">${r.acertos}</div>
+          <div class="sc-label">✔ Acertos</div>
+        </div>
+        <div class="score-card score-bad">
+          <div class="sc-num">${r.erros}</div>
+          <div class="sc-label">✖ Erros</div>
+        </div>
+        <div class="score-card score-disc">
+          <div class="sc-num">${r.discursivas}</div>
+          <div class="sc-label">✏ Discursivas</div>
+        </div>`;
+      document.getElementById('score-pct').textContent=
+        `Aproveitamento de ${r.pct}% nas ${r.totalObj} questões objetivas. As discursivas serão corrigidas pelo professor.`;
       // Tela de conclusão com botão de voltar
       document.getElementById('screen-exam').classList.remove('active');
       document.getElementById('screen-done').classList.add('active');
@@ -1452,6 +1516,16 @@ function gerarPDF(respostas){
   const GRAY_L     =[232,227,244];
   const TEXT_DARK  =[ 61, 53, 86];
   const WHITE      =[255,255,255];
+  // Verde (acerto) e vermelho (erro)
+  const GREEN      =[ 46,160,103];
+  const GREEN_SOFT =[223,244,232];
+  const GREEN_DARK =[ 24, 98, 61];
+  const RED        =[211, 84, 84];
+  const RED_SOFT   =[250,228,228];
+  const RED_DARK   =[146, 44, 44];
+
+  // Resultado da prova (acertos/erros por questão)
+  const resultado=calcularResultado(respostas);
 
   const letras=['A','B','C','D'];
   let y=0;
@@ -1525,6 +1599,39 @@ function gerarPDF(respostas){
   doc.text('INSTRUÇÕES: Assinale a alternativa correta nas questões objetivas e desenvolva as discursivas com clareza e objetividade.',ML+6,y+7.5);
   y+=20;
 
+  // ── PLACAR DE RESULTADO ──
+  const cardW=(TW-12)/3;
+  // Acertos (verde)
+  doc.setFillColor(...GREEN_SOFT);
+  doc.setDrawColor(...GREEN);
+  doc.setLineWidth(0.6);
+  doc.roundedRect(ML,y,cardW,20,3,3,'FD');
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(...GREEN_DARK);
+  doc.text(String(resultado.acertos),ML+cardW/2,y+10,{align:'center'});
+  doc.setFontSize(7);doc.setTextColor(...GREEN);
+  doc.text('ACERTOS',ML+cardW/2,y+16,{align:'center'});
+  // Erros (vermelho)
+  doc.setFillColor(...RED_SOFT);
+  doc.setDrawColor(...RED);
+  doc.roundedRect(ML+cardW+6,y,cardW,20,3,3,'FD');
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(...RED_DARK);
+  doc.text(String(resultado.erros),ML+cardW+6+cardW/2,y+10,{align:'center'});
+  doc.setFontSize(7);doc.setTextColor(...RED);
+  doc.text('ERROS',ML+cardW+6+cardW/2,y+16,{align:'center'});
+  // Discursivas (lilás)
+  doc.setFillColor(...LILAC_MIST);
+  doc.setDrawColor(...LILAC_SOFT);
+  doc.roundedRect(ML+2*(cardW+6),y,cardW,20,3,3,'FD');
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(...LILAC_DEEP);
+  doc.text(String(resultado.discursivas),ML+2*(cardW+6)+cardW/2,y+10,{align:'center'});
+  doc.setFontSize(7);doc.setTextColor(...LILAC);
+  doc.text('DISCURSIVAS (CORREÇÃO MANUAL)',ML+2*(cardW+6)+cardW/2,y+16,{align:'center'});
+  y+=25;
+
+  doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(...TEXT_DARK);
+  doc.text(`Aproveitamento: ${resultado.pct}% nas ${resultado.totalObj} questões objetivas`,PW/2,y,{align:'center'});
+  y+=9;
+
   /* ── QUESTÕES ── */
   provaAtual.forEach((q,idx)=>{
     const n=idx+1;
@@ -1547,12 +1654,25 @@ function gerarPDF(respostas){
     doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(...GOLD_SOFT);
     doc.text(`Q${String(n).padStart(2,'0')}`,ML+3,y+7.5);
 
-    const topicoStr=q.topico.length>65?q.topico.substring(0,63)+'…':q.topico;
+    const topicoStr=q.topico.length>50?q.topico.substring(0,48)+'…':q.topico;
     doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(...WHITE);
     doc.text(topicoStr,ML+16,y+7.5);
 
-    doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(...WHITE);
-    doc.text(badge(q.tipo_q),PW-MR-2,y+7.5,{align:'right'});
+    // Selo de acerto/erro (verde/vermelho) na ponta direita do cabeçalho
+    const st=resultado.status[idx];
+    if(st==='ok'||st==='erro'){
+      const pillW=18,pillX=PW-MR-pillW-1.5;
+      if(st==='ok'){doc.setFillColor(...GREEN);}else{doc.setFillColor(...RED);}
+      doc.roundedRect(pillX,y+2,pillW,7,3.5,3.5,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(...WHITE);
+      doc.text(st==='ok'?'ACERTO':'ERRO',pillX+pillW/2,y+6.8,{align:'center'});
+      // Tipo da questão antes do selo
+      doc.setFontSize(6.5);doc.setTextColor(...WHITE);
+      doc.text(badge(q.tipo_q),pillX-3,y+7.5,{align:'right'});
+    } else {
+      doc.setFont('helvetica','bold');doc.setFontSize(6.5);doc.setTextColor(...WHITE);
+      doc.text(badge(q.tipo_q),PW-MR-2,y+7.5,{align:'right'});
+    }
     y+=14;
 
     // ─ Enunciado ─
@@ -1564,23 +1684,47 @@ function gerarPDF(respostas){
     y+=enuncLines.length*4.5+5;
 
     if(!disc){
-      // ─ Alternativas ─
+      // ─ Alternativas — verde p/ correta, vermelho p/ marcada errada ─
+      const letraCorretaExibida=letras[q.indiceCorretaExibida];
       q.altsExibidas.forEach((a,i)=>{
         const letraExib=letras[i];
         const isSelected=resp===letraExib;
-        const altTxt=`${letraExib})  ${a.texto}`;
+        const isCorrect=letraExib===letraCorretaExibida;
+
+        let sufixo='';
+        if(isSelected&&isCorrect)sufixo='   [SUA RESPOSTA — CORRETA]';
+        else if(isSelected&&!isCorrect)sufixo='   [SUA RESPOSTA — INCORRETA]';
+        else if(!isSelected&&isCorrect)sufixo='   [RESPOSTA CORRETA]';
+
+        const altTxt=`${letraExib})  ${a.texto}${sufixo}`;
         const altLines=splitLines(altTxt,TW-6,8.5);
         const boxH=altLines.length*4.2+5;
         checkY(boxH+2);
 
-        if(isSelected){
-          // Selecionada: amarelo pastel com borda lilás e texto escuro
-          doc.setFillColor(...GOLD_SOFT);
-          doc.setDrawColor(...LILAC);
-          doc.setLineWidth(0.6);
+        if(isSelected&&isCorrect){
+          // Verdinho — acertou
+          doc.setFillColor(...GREEN_SOFT);
+          doc.setDrawColor(...GREEN);
+          doc.setLineWidth(0.7);
           doc.roundedRect(ML,y-3.5,TW,boxH,1.5,1.5,'FD');
           doc.setFont('helvetica','bold');doc.setFontSize(8.5);
-          doc.setTextColor(...GOLD_DARK);
+          doc.setTextColor(...GREEN_DARK);
+        } else if(isSelected&&!isCorrect){
+          // Vermelho — errou
+          doc.setFillColor(...RED_SOFT);
+          doc.setDrawColor(...RED);
+          doc.setLineWidth(0.7);
+          doc.roundedRect(ML,y-3.5,TW,boxH,1.5,1.5,'FD');
+          doc.setFont('helvetica','bold');doc.setFontSize(8.5);
+          doc.setTextColor(...RED_DARK);
+        } else if(isCorrect){
+          // Correta não marcada — destaque verde suave
+          doc.setFillColor(...GREEN_SOFT);
+          doc.setDrawColor(...GREEN);
+          doc.setLineWidth(0.4);
+          doc.roundedRect(ML,y-3.5,TW,boxH,1.5,1.5,'FD');
+          doc.setFont('helvetica','normal');doc.setFontSize(8.5);
+          doc.setTextColor(...GREEN_DARK);
         } else {
           doc.setFillColor(...LILAC_MIST);
           doc.roundedRect(ML,y-3.5,TW,boxH,1.5,1.5,'F');
